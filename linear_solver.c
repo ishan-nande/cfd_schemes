@@ -5,7 +5,11 @@
 #include"common_utils.h"
 
 
-//forward elimination of a system
+/*
+*Reduction of a system to uppper triangular matrix.
+*Implementation based on algorithm taken from 
+*Chapter 9,"Numerical Methods for Engineers", Steven C. Chapra, Raymond P. Chanale
+*/
 void forward_elimination( int R, int C, float (*out)[C])
 {
      for(int k=0; k<R; k++)               //k tracks the row containg the pivot element  
@@ -29,7 +33,11 @@ void forward_elimination( int R, int C, float (*out)[C])
      }      
 }
 
-//backward substitution for x vector solution
+/*
+*Backward subsitution to solve for vector x of unknowns using a upper triangular matrix.
+*Implementation based on algorithm taken from 
+*Chapter 9,"Numerical Methods for Engineers", Steven C. Chapra, Raymond P. Chanale
+*/
 void back_substitution(int R, int C, float * out, const float (*in)[C] )
 {
     //last variable  calculation
@@ -48,14 +56,21 @@ void back_substitution(int R, int C, float * out, const float (*in)[C] )
     }
 }
 
-//naive Gauss elimination 
+/*
+*Naive Gauss elimination to reduce system to upper triangular matrix.
+*/
+
 void naive_gauss(int R, int C, float (*fw_elim_mat)[C], float * sol_vector )
 {
     forward_elimination(R, C, fw_elim_mat);
     back_substitution(R, C, sol_vector, fw_elim_mat);
 }
  
-//TDMA forward elimination
+/*
+* Forward elimination part of the TDMA algorithm.
+* The implementation is based on
+* Appendix A,"Computaional FLuid Dynamics, Basics with Applications",John D. Anderson Jr
+*/
 void tdma_forward_elimination(int R, int C, float(*mat)[C] )
 {
     /*
