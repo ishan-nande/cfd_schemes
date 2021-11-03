@@ -1,3 +1,15 @@
-cfd_schemes: linear_solver.c common_utils.c example_4_3_HVWM.c
+TARGET = example_4_1_HVWM
 
-	gcc -g -Wall -std=c11 linear_solver.c common_utils.c example_4_3_HVWM.c -o cfd_schemes
+BINDIR = bin
+CFLAGS = gcc -std=c11 -g -Wall 
+CC = cc
+LDFLAGS = -l lis -l m
+
+$(TARGET): $(TARGET)
+	$(CFLAGS) $(TARGET).c -o ./$(BINDIR)/$(TARGET) $(LDFLAGS)
+
+#remove executbale file 
+rm_exe:
+	rm $(TARGET)
+clean:	
+	rm *.o
