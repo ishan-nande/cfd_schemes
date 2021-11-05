@@ -14,11 +14,8 @@
 */
 
 #include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
 
-#include"linear_solver.h"
-#include"common_utils.h"
+#include"lis.h"
 
 #define N 5
 #define L 1.0
@@ -26,98 +23,85 @@
 #define n_square 25
 #define T_amb 20
 
-int main(int argc, char *argv[])
+LIS_INT main(int argc, char *argv[])
 { 
+    LIS_Comm comm = LIS_COMM_WORLD;
+    LIS_VECTOR b,x;
+    LIS_MATRIX A;
+    LIS_SOLVER solver;
+    
+    lis_initialize(&argc, &argv);
 
+    lis_matrix_create(comm, &A);
+    lis_matrix_set_size(A,0, (LIS_INT)N);
+
+    lis_vector_create(comm, &b);
+    lis_vector_set_size(b,0,(LIS_INT)N);
+    
    float delta_x = L/N; 
 
    float a_W,a_E;
    a_W = 1/delta_x;
-   a_E = a_W;   //east and west coefficients have the same formulation for all nodes 
+   a_E = a_W; //east and west coefficients have the same formulation for all nodes 
    
-   /*
-   *  common heat source linearization term for nodes 2 to N-1 
-   */  
+   //common heat source linearization term for nodes 2 to N-1  
    float S_u = n_square * T_amb * delta_x;
    float S_P = - n_square * delta_x;
 
-   /*
-   * S_u and S_P terms obtained at node 1 from values at B
-   */
+   //S_u and S_P terms obtained at node 1 from values at B
    float S_u_B = (2*T_B)/delta_x + ( n_square * T_amb * delta_x); 
    float S_P_B = -2/delta_x - (n_square*delta_x);
 
-   /*
-   * S_u and S_P terms obtained at node 5 from insulation boundary condition
-   */
+   //S_u and S_P terms obtained at node 5 from insulation boundary condition
    float S_u_zero_q = n_square * T_amb * delta_x;
    float S_P_zero_q = -n_square * delta_x;
 
-   //allocate memory for system coefficients and constants 
-   float (*eq_system)[N+1];
-   eq_system = (float (*)[N+1])calloc( N*(N+1), sizeof(float));
-   if( eq_system==NULL)
+    //build the system
+    for(LIS_INT i=0; i<N; i++)
     {
-        puts("Mem alloc for equation system failed");
-        exit(EXIT_FAILURE);
+        if(i==0)//boundary condition on B
+        {
+            lis_matrix_set_value(LIS_INS_VALUE,i,i,a_E-S_P_B,A);
+            lis_matrix_set_value(LIS_INS_VALUE,i,i+1,-a_E,A);
+            lis_vector_set_value(LIS_INS_VALUE,i, S_u_B,b);  
+        }
+        else if(i==4)//zero heat flux boundary condition on other end of rod 
+        {
+            lis_matrix_set_value(LIS_INS_VALUE,i,i,a_W-S_P_zero_q,A);
+            lis_matrix_set_value(LIS_INS_VALUE,i,i-1,-a_W,A);
+            lis_vector_set_value(LIS_INS_VALUE,i, S_u_zero_q,b);            
+        }
+        else//nodes from i+1 to N-1
+        {
+            lis_matrix_set_value(LIS_INS_VALUE,i,i,a_W+a_E-S_P,A);//a_P formulation
+            lis_matrix_set_value(LIS_INS_VALUE,i,i-1,-a_W,A);
+            lis_matrix_set_value(LIS_INS_VALUE,i,i+1,-a_E,A);
+            lis_vector_set_value(LIS_INS_VALUE,i, S_u,b);      
+        }
     }
 
-    /*
-    * build the discretized system matrix 
-    */
-   for(int i=0; i<N; i++)
-   {
-       if(i==0) //take into account boundary condition on B
-       {
-           eq_system[i][i] = a_E - S_P_B;
-           eq_system[i][i+1] = -a_E;
-           eq_system[i][N] = S_u_B;
-       }
-       else if(i==4) //take into account zero heat flux boundary condition on other end of rod 
-       {
-            eq_system[i][i] = a_W - S_P_zero_q;
-            eq_system[i][i-1] = -a_W;
-            eq_system[i][N] = S_u_zero_q;          
-       }
-       else //nodes from i+1 to N-1
-       {
-           eq_system[i][i] = a_W + a_E - S_P; //a_P forrmulation
-           eq_system[i][i-1] = -a_W;
-           eq_system[i][i+1] = -a_E;
-           eq_system[i][N] = S_u;
+    lis_matrix_set_type(A, LIS_MATRIX_CSR);
+    lis_matrix_assemble(A);
 
-       }
-   }
+    //solver setup 
+    lis_solver_create(&solver);
+    lis_solver_set_option("-i gs -p none -print all -maxiter[1000]", solver);
+    lis_vector_duplicate(A,&x);
+    lis_solve(A,b,x,solver);
+    //lis_solver_get_iter(solver,&iter);
+    //lis_printf(comm,"number of iterations = %D\n",iter);
+          
+    //data output 
+    lis_output_matrix(A, LIS_FMT_MM, "./data_output/matrx_example_4_3_HVWM");
+    lis_output_vector(b, LIS_FMT_MM, "./data_output/b_vector_example_4_3_HVWM");
+    lis_output_vector(x, LIS_FMT_MM, "./data_output/x_vector_example_4_3_HVWM");
 
-    
-    //allocate memory for forward eliminated matrix
-    float (*ptr)[N+1];
-    ptr=( float (*)[N+1])calloc(N*(N+1),sizeof(float));
-    if( ptr==NULL)
-    {
-        puts("Mem alloc for ptr failed");
-        exit(EXIT_FAILURE);
-    }
+    lis_matrix_destroy(A);
+    lis_vector_destroy(b);
+    lis_vector_destroy(x);
+    lis_solver_destroy(solver);
 
-    //copy elements of the discretized system to the forward elimination matrix
-    float (*fw_elim_mat)[N+1] = memcpy( ptr, eq_system, sizeof(float)*N*(N+1) );
-    
-    //allocate memory for solution vector x
-    float * x;
-    x = (float *)calloc( N, sizeof(float) );
-    if( x==NULL)
-    {
-        puts("Mem alloc for x vector failed");
-        exit(EXIT_FAILURE);
-    }
-
-    tdma_forward_elimination(N, N+1, fw_elim_mat);
-    back_substitution(N, N+1, x, fw_elim_mat);
-    //print_array(N, N+1, fw_elim_mat);
-    print_vector(N, x);
-
-    free(fw_elim_mat);
-    free(x);
-    free(eq_system);
+    lis_finalize();
+     
     return 0;
 }
